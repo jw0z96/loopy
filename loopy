@@ -1,0 +1,104 @@
+#!/usr/bin/python3
+
+'''
+loopy
+'''
+
+import sys
+import pyaudio
+
+from PyQt5.QtCore import Qt
+from PyQt5.QtWidgets import QWidget, QApplication
+
+class Recorder(QWidget):
+	def __init__(self, channels = 2, rate = 44100, frames_per_buffer=1024, sample_format = pyaudio.paInt16):
+		super().__init__()
+		self.initUI()
+		# pyaudio instance
+		self._pa = pyaudio.PyAudio()
+		# config
+		self.channels = channels
+		self.rate = rate
+		self.frames_per_buffer = frames_per_buffer
+		self.sample_format = sample_format
+		# recording buffer & variables
+		self.frames = []
+		self._stream = None
+		self.recording = False
+		self.frame_index = 0
+
+	def initUI(self):
+		self.setGeometry(300, 300, 250, 150)
+		self.setWindowTitle('Recorder App')
+		self.show()
+
+	def keyPressEvent(self, e):
+		if e.key() == Qt.Key_Escape:
+			self.close_streams()
+			self.close()
+
+		if e.key() == Qt.Key_Space:
+			if not self.recording:
+				self.start_recording()
+			else:
+				self.stop_recording()
+				self.play_recording()
+
+	def start_recording(self):
+		print("Starting Recording")
+		self._stream = self._pa.open(
+			format = self.sample_format,
+			channels = self.channels,
+			rate = self.rate,
+			input = True,
+			frames_per_buffer = self.frames_per_buffer,
+			stream_callback = self.record_callback())
+		self._stream.start_stream()
+		print("Started Recording")
+		self.recording = True
+
+	def stop_recording(self):
+		print("Stopping Recording")
+		self._stream.stop_stream()
+		print("Stopped Recording, recorded {} frames".format(len(self.frames)))
+		self.recording = False
+
+	def play_recording(self):
+		print("Playing recording")
+		self._stream = self._pa.open(
+			format = self.sample_format,
+			channels = self.channels,
+			rate = self.rate,
+			output = True,
+			stream_callback = self.playback_callback())
+		self._stream.start_stream()
+
+	def clear_recording(self):
+		self.frames = []
+
+	def record_callback(self):
+		def callback(in_data, frame_count, time_info, status):
+			self.frames.append(in_data)
+			return in_data, pyaudio.paContinue
+		return callback
+
+	def playback_callback(self):
+		def callback(in_data, frame_count, time_info, status):
+			# hacky way to get it to loop
+			if self.frame_index == len(self.frames):
+				self.frame_index = 0
+			data = self.frames[self.frame_index]
+			self.frame_index += 1
+			return data, pyaudio.paContinue
+		return callback
+
+	def close_streams(self):
+		if self._stream:
+			self._stream.stop_stream()
+			self._stream.close()
+		self._pa.terminate()
+
+if __name__== "__main__":
+	app = QApplication([])
+	rec = Recorder()
+	sys.exit(app.exec_())
