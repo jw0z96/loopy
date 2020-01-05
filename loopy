@@ -6,9 +6,12 @@ loopy
 
 import sys
 import pyaudio
+import numpy as np
 
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import QWidget, QApplication
+
+THRESHOLD = 200
 
 class Recorder(QWidget):
 	def __init__(self, channels = 2, rate = 44100, frames_per_buffer=1024, sample_format = pyaudio.paInt16):
@@ -44,6 +47,9 @@ class Recorder(QWidget):
 				self.stop_recording()
 				self.play_recording()
 
+		if e.key() == Qt.Key_C:
+			self.clear_recording()
+
 	def start_recording(self):
 		print("Starting Recording")
 		self._stream = self._pa.open(
@@ -54,8 +60,8 @@ class Recorder(QWidget):
 			frames_per_buffer = self.frames_per_buffer,
 			stream_callback = self.record_callback())
 		self._stream.start_stream()
-		print("Started Recording")
-		self.recording = True
+		self.frame_index = 0
+		self.frames = []
 
 	def stop_recording(self):
 		print("Stopping Recording")
@@ -74,12 +80,27 @@ class Recorder(QWidget):
 		self._stream.start_stream()
 
 	def clear_recording(self):
+		if self._stream:
+			self._stream.stop_stream()
+			self._stream.close()
+		self.recording = False
+		self.frame_index = 0
 		self.frames = []
 
 	def record_callback(self):
 		def callback(in_data, frame_count, time_info, status):
-			self.frames.append(in_data)
+			if self.recording:
+				self.frames.append(in_data)
+			else:
+				# create a numpy array holding a single read of audio data
+				samples = np.fromstring(in_data, dtype=np.int16)
+				peak = np.average(np.abs(samples)) * 2
+				if peak > THRESHOLD:
+					print("Started Recording")
+					self.recording = True
+					self.frames.append(in_data)
 			return in_data, pyaudio.paContinue
+
 		return callback
 
 	def playback_callback(self):
